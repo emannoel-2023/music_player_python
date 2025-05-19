@@ -1,5 +1,5 @@
 #===================
-# Módulo: audio.py
+# Módulo: audio.py (atualizado)
 #===================
 import pygame
 import numpy as np
@@ -7,6 +7,7 @@ from pygame import mixer
 import os
 import time
 import random
+import math
 
 class AudioPlayer:
     def __init__(self):
@@ -17,6 +18,8 @@ class AudioPlayer:
         self.spectrum_data = []
         self.start_time = 0
         self.song_length = 0
+        self.last_spectrum_update = 0
+        self.spectrum_delay = 0.05  # Atualiza o espectro a cada 50ms
         
         mixer.music.set_volume(self.volume)
         # Adicionar evento para detectar o final da música para autoplay
@@ -61,19 +64,55 @@ class AudioPlayer:
         return self.volume
 
     def get_spectrum(self):
-        if not mixer.get_init() or not mixer.music.get_busy():
-            return np.zeros(15)
+        current_time = time.time()
+        
+        # Apenas atualiza o espectro após um pequeno intervalo para economizar CPU
+        if current_time - self.last_spectrum_update < self.spectrum_delay:
+            if hasattr(self, 'last_spectrum'):
+                return self.last_spectrum
+            else:
+                self.last_spectrum = np.zeros(10)
+                return self.last_spectrum
+                
+        self.last_spectrum_update = current_time
+            
+        if not mixer.get_init() or not mixer.music.get_busy() and not self.paused:
+            self.last_spectrum = np.zeros(10)
+            return self.last_spectrum
             
         try:
             if self.current_song:
                 progress = self.get_progress()
-                # Espectro mais largo - multiplicar por 5 para aumentar a largura do espectro
-                data = np.sin(np.linspace(0, 5, 10) + progress)
-                return np.abs(data) * 5  # Aumentado de 2 para 5
+                
+                # Cria um espectro mais dinâmico e interessante
+                # Usamos funções seno e cosseno com deslocamentos para gerar um espectro mais realista
+                base = np.linspace(0, 10, 10)
+                
+                # Adiciona complexidade e dinamismo ao espectro
+                data = np.zeros(10)
+                for i in range(10):
+                    # Frequências simuladas com base no tempo
+                    freq1 = 0.5 + 0.5 * math.sin(progress * 0.2 + i * 0.3)
+                    freq2 = 0.7 + 0.3 * math.cos(progress * 0.1 + i * 0.5)
+                    
+                    # Amplitudes simuladas com variação no tempo
+                    amp1 = 0.6 + 0.4 * math.sin(progress * 0.3 + i * 0.2)
+                    amp2 = 0.5 + 0.5 * math.cos(progress * 0.4 + i * 0.1)
+                    
+                    # Compõe ambas frequências com suas amplitudes
+                    data[i] = abs(amp1 * math.sin(freq1 * progress + i) + 
+                                 amp2 * math.cos(freq2 * progress + i * 2))
+                
+                # Normaliza para valores entre 0 e 8 (a altura preferida para visualização)
+                data = 8 * data / np.max(data) if np.max(data) > 0 else data
+                
+                self.last_spectrum = data
+                return data
         except Exception as e:
             print(f"Erro ao obter espectro: {e}")
         
-        return np.zeros(15)
+        self.last_spectrum = np.zeros(10)
+        return self.last_spectrum
 
     def get_progress(self):
         if not self.current_song:

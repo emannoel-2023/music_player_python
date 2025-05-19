@@ -1,5 +1,5 @@
 #===================
-# Módulo: ui.py
+# Módulo: ui.py (atualizado)
 #===================
 import curses
 import psutil
@@ -11,6 +11,9 @@ class TerminalUI:
         self.stdscr = curses.initscr()
         self.player = player
         self.pm = playlist_manager
+        self.process = psutil.Process(os.getpid())
+        self.last_cpu_measure_time = time.time()
+        self.last_cpu_percent = 0
         
         # Configurar curses
         curses.start_color()
@@ -19,9 +22,21 @@ class TerminalUI:
         curses.init_pair(2, curses.COLOR_CYAN, -1)
         curses.init_pair(3, curses.COLOR_YELLOW, -1)
         curses.init_pair(4, curses.COLOR_RED, -1)
+        curses.init_pair(5, curses.COLOR_MAGENTA, -1)
+        curses.init_pair(6, curses.COLOR_BLUE, -1)
         curses.curs_set(0)
         self.stdscr.nodelay(1)
         self.stdscr.keypad(1)
+        
+        # Atualiza a CPU pela primeira vez
+        self.update_cpu_usage()
+
+    def update_cpu_usage(self):
+        current_time = time.time()
+        if current_time - self.last_cpu_measure_time >= 1.0:  # Intervalo de 1 segundo
+            self.last_cpu_percent = self.process.cpu_percent()
+            self.last_cpu_measure_time = current_time
+        return self.last_cpu_percent
 
     def draw_progress(self, y):
         progress = self.player.get_progress()
@@ -35,16 +50,43 @@ class TerminalUI:
 
     def draw_spectrum(self, y):
         spectrum = self.player.get_spectrum()
-        for i, val in enumerate(spectrum[:10]):
-            # Aumentando o número de caracteres repetidos para visualização
-            self.stdscr.addstr(y + i, 0, "{}".format('▓' * int(val)), curses.color_pair(2))
+        spectrum_width = 40  # Largura total do espectro
+        
+        # Desenha o eixo horizontal do espectro
+        for i in range(min(10, len(spectrum))):
+            # Calcula a altura da barra normalizada para o espectro
+            height = min(int(spectrum[i] * 2), 15)  # Limita a altura máxima a 15
+            
+            # Escolhe a cor da barra baseada na sua altura
+            if height <= 3:
+                color = curses.color_pair(1)  # Verde para baixas frequências
+            elif height <= 7:
+                color = curses.color_pair(3)  # Amarelo para médias frequências
+            elif height <= 10:
+                color = curses.color_pair(5)  # Magenta para altas-médias frequências
+            else:
+                color = curses.color_pair(4)  # Vermelho para altas frequências
+            
+            # Desenha a barra horizontal
+            bar = '█' * height
+            self.stdscr.addstr(y + i, 0, bar, color)
+
+    def draw_volume_bar(self, y, x):
+        """Desenha uma barra de volume horizontal"""
+        vol_percent = int(self.player.volume * 100)
+        bar_width = 20
+        filled = int(bar_width * self.player.volume)
+        
+        self.stdscr.addstr(y, x, f"Volume: [{('|' * filled) + (' ' * (bar_width - filled))}] {vol_percent}%")
+        self.stdscr.addstr(y, x + 35, "[+/-] Ajustar", curses.color_pair(2))
 
     def draw_system_stats(self, y):
-        # Movido para uma posição mais apropriada
-        mem = psutil.virtual_memory()
-        self.stdscr.addstr(25, 0, f"RAM: {mem.percent:.1f}%", curses.color_pair(1))
-        self.stdscr.addstr(25, 20, f"CPU: {psutil.cpu_percent():.1f}%", curses.color_pair(1))
-        self.stdscr.addstr(25, 40, f"Volume: {int(self.player.volume*100)}%", curses.color_pair(1))
+        # Usa o psutil mais corretamente para obter métricas apenas deste processo
+        mem = self.process.memory_percent()
+        cpu = self.update_cpu_usage()
+        
+        self.stdscr.addstr(y, 0, f"RAM: {mem:.1f}%", curses.color_pair(1))
+        self.stdscr.addstr(y, 20, f"CPU: {cpu:.1f}%", curses.color_pair(1))
 
     def draw_playlist(self, start_y, start_x):
         max_items = 8
@@ -57,7 +99,7 @@ class TerminalUI:
         commands = [
             ("[1] Abrir diretório", "[2] Play/Pause"),
             ("[3] Parar", "[4] Próxima"),
-            ("[5] Anterior", "[6] Volume"),
+            ("[5] Anterior", "[+/-] Volume"),
             ("[7] Criar playlist", "[8] Add"),
             ("[P] Playlists", "[9] Remover"),
             ("[F] Pesquisar", "[B] Biblioteca"),
@@ -84,6 +126,8 @@ class TerminalUI:
         curses.init_pair(2, curses.COLOR_CYAN, curses.COLOR_BLACK)
         curses.init_pair(3, curses.COLOR_YELLOW, curses.COLOR_BLACK)
         curses.init_pair(4, curses.COLOR_RED, curses.COLOR_BLACK)
+        curses.init_pair(5, curses.COLOR_MAGENTA, curses.COLOR_BLACK)
+        curses.init_pair(6, curses.COLOR_BLUE, curses.COLOR_BLACK)
         curses.curs_set(0)
         self.stdscr.nodelay(1)
         
@@ -124,16 +168,13 @@ class TerminalUI:
                     self.pm.current_index = (self.pm.current_index - 1) % len(self.pm.current_playlist)
                     self.player.load_song(self.pm.current_playlist[self.pm.current_index])
                     self.player.toggle_play_pause()
-            elif key == ord('6'):
-                # Corrigido o ajuste de volume
-                try:
-                    current_vol = int(self.player.volume * 100)
-                    new_vol = self.show_input(f"Volume atual: {current_vol}% (0-100):")
-                    if new_vol:
-                        new_vol = max(0, min(100, int(new_vol)))
-                        self.player.set_volume(new_vol / 100)
-                except Exception as e:
-                    self.show_error(f"Erro ao ajustar volume: {str(e)}")
+            # Controle de volume dinâmico com teclas + e -
+            elif key == ord('+') or key == ord('='):  # = está no mesmo botão que + em muitos teclados
+                new_vol = min(1.0, self.player.volume + 0.05)
+                self.player.set_volume(new_vol)
+            elif key == ord('-'):
+                new_vol = max(0.0, self.player.volume - 0.05)
+                self.player.set_volume(new_vol)
             elif key == ord('7'):
                 name = self.show_input("Nome da playlist:")
                 if name:
@@ -170,6 +211,8 @@ class TerminalUI:
                 curses.init_pair(2, curses.COLOR_CYAN, -1)
                 curses.init_pair(3, curses.COLOR_YELLOW, -1)
                 curses.init_pair(4, curses.COLOR_RED, -1)
+                curses.init_pair(5, curses.COLOR_MAGENTA, -1)
+                curses.init_pair(6, curses.COLOR_BLUE, -1)
                 curses.curs_set(0)
                 self.stdscr.nodelay(1)
                 self.stdscr.keypad(1)
@@ -231,16 +274,20 @@ class TerminalUI:
                 try:
                     self.stdscr.erase()
                     self.stdscr.addstr(0, 0, r"""
-  ___  __  __  ____  _  _ 
- / __)(  \/  )( ___)( \/ )
-( (__  )    (  )__)  )  ( 
- \___)(_/\/\_)(____)(_/\_)
+
+     ____  __    ___   __   ____   __  ____    ____  ____    _  _  _  _  ____   ___   __  
+    (_  _)/  \  / __) / _\ (    \ /  \(  _ \  (    \(  __)  ( \/ )/ )( \/ ___) / __) / _\ 
+      )( (  O )( (__ /    \ ) D ((  O ))   /   ) D ( ) _)   / \/ \) \/ (\___ \( (_ \/    \
+     (__) \__/  \___)\_/\_/(____/ \__/(__\_)  (____/(____)  \_)(_/\____/(____/ \___/\_/\_/
+
                     """.strip(), curses.color_pair(3))
                     self.draw_progress(5)
                     self.draw_spectrum(7)
                     self.draw_playlist(7, 45)
                     self.draw_commands()
-                    self.draw_system_stats(25)  # Movido para o final da tela
+                    # Adiciona a barra de volume visual
+                    self.draw_volume_bar(14, 0)
+                    self.draw_system_stats(25)  # Mantendo as estatísticas do sistema no final da tela
                     
                     # Verificar se a música acabou e iniciar a próxima automaticamente
                     if self.player.check_song_end() and self.pm.current_playlist and len(self.pm.current_playlist) > 1:
@@ -275,6 +322,8 @@ class TerminalUI:
         curses.init_pair(2, curses.COLOR_CYAN, -1)
         curses.init_pair(3, curses.COLOR_YELLOW, -1)
         curses.init_pair(4, curses.COLOR_RED, -1)
+        curses.init_pair(5, curses.COLOR_MAGENTA, -1)
+        curses.init_pair(6, curses.COLOR_BLUE, -1)
         curses.curs_set(0)
         self.stdscr.nodelay(1)
         self.stdscr.keypad(1)
