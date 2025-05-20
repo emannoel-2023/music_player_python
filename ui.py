@@ -482,17 +482,19 @@ class TerminalUI:
                     self.stdscr.erase()
                     self.stdscr.addstr(0, 0, r"""
 
+
      ____  __    ___   __   ____   __  ____    ____  ____    _  _  _  _  ____   ___   __  
     (_  _)/  \  / __) / _\ (    \ /  \(  _ \  (    \(  __)  ( \/ )/ )( \/ ___) / __) / _\ 
       )( (  O )( (__ /    \ ) D ((  O ))   /   ) D ( ) _)   / \/ \) \/ (\___ \( (_ \/    \
      (__) \__/  \___)\_/\_/(____/ \__/(__\_)  (____/(____)  \_)(_/\____/(____/ \___/\_/\_/
+
 
                     """.strip(), curses.color_pair(3))
                     self.draw_progress(5)
                     self.draw_spectrum(7)
                     self.draw_commands()
                     # Desenha a playlist ao lado dos comandos
-                    self.draw_playlist(5, 55)  
+                    self.draw_playlist(7, 55)  
                     # Adiciona a barra de volume visual
                     self.draw_volume_bar(14, 0)
                     self.draw_system_stats(26)  # Ajustado para ficar abaixo do tempo/duração
