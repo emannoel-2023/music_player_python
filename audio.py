@@ -84,7 +84,7 @@ class AudioPlayer:
             if self.current_song:
                 progress = self.get_progress()
                 
-                # Cria um espectro mais dinâmico e interessante
+                # Cria um espectro mais dinâmico e interessante para visualização horizontal
                 # Usamos funções seno e cosseno com deslocamentos para gerar um espectro mais realista
                 base = np.linspace(0, 10, 10)
                 
@@ -95,7 +95,7 @@ class AudioPlayer:
                     freq1 = 0.5 + 0.5 * math.sin(progress * 0.2 + i * 0.3)
                     freq2 = 0.7 + 0.3 * math.cos(progress * 0.1 + i * 0.5)
                     
-                    # Amplitudes simuladas com variação no tempo
+                    # Amplitudes simuladas com variação no tempo e posição
                     amp1 = 0.6 + 0.4 * math.sin(progress * 0.3 + i * 0.2)
                     amp2 = 0.5 + 0.5 * math.cos(progress * 0.4 + i * 0.1)
                     
@@ -103,8 +103,8 @@ class AudioPlayer:
                     data[i] = abs(amp1 * math.sin(freq1 * progress + i) + 
                                  amp2 * math.cos(freq2 * progress + i * 2))
                 
-                # Normaliza para valores entre 0 e 8 (a altura preferida para visualização)
-                data = 8 * data / np.max(data) if np.max(data) > 0 else data
+                # Normaliza para valores entre 0 e 5 (a altura preferida para visualização horizontal)
+                data = 5 * data / np.max(data) if np.max(data) > 0 else data
                 
                 self.last_spectrum = data
                 return data
